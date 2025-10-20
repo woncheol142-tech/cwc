@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>탁구 동호회 예산 관리 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Calm Neutrals -->
+    <!-- Application Structure Plan: A dashboard layout is chosen for optimal information hierarchy. It presents a top-level summary via key metric cards, a visual breakdown through charts, and allows for detailed manipulation in an interactive table at the bottom. This structure transforms a static report into a dynamic "what-if" analysis tool, prioritizing user understanding and interaction over a simple replication of the spreadsheet format. -->
+    <!-- Visualization & Content Choices: 
+        - Totals -> Goal: Inform -> Viz: Key Metric Cards -> Interaction: Dynamic text update -> Justification: Immediate visibility of critical data -> Method: HTML/JS.
+        - Expense Breakdown -> Goal: Compare -> Viz: Bar Chart (Chart.js) -> Interaction: Dynamic redraw on data change -> Justification: Clear categorical comparison of spending components -> Library: Chart.js/Canvas.
+        - Funding Ratio -> Goal: Compare Proportions -> Viz: Donut Chart (Chart.js) -> Interaction: Dynamic redraw -> Justification: Ideal for part-to-whole analysis of funding sources -> Library: Chart.js/Canvas.
+        - Detailed Data -> Goal: Organize/Interact -> Viz: Interactive HTML Table -> Interaction: Input fields and checkboxes trigger recalculations, Actual Expense for Venue Rental dynamically defaults based on headcount -> Justification: Core interactive element for data manipulation and what-if analysis, incorporating user request for auto-calculation on Venue Rental estimate -> Method: HTML/JS.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #f8fafc;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 350px;
+            max-height: 400px;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+            }
+        }
+        .styled-checkbox {
+            appearance: none;
+            background-color: #e5e7eb;
+            width: 2.75rem;
+            height: 1.5rem;
+            border-radius: 9999px;
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .styled-checkbox::before {
+            content: '';
+            position: absolute;
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 50%;
+            background-color: white;
+            top: 0.125rem;
+            left: 0.125rem;
+            transition: transform 0.2s ease-in-out;
+        }
+        .styled-checkbox:checked {
+            background-color: #3b82f6;
+        }
+        .styled-checkbox:checked::before {
+            transform: translateX(1.25rem);
+        }
+        .number-input {
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .number-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+        }
+    </style>
+</head>
+<body class="text-slate-700">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800">탁구 동호회 예산 관리 대시보드</h1>
+            <p class="mt-2 text-slate-500"></p>
+        </header>
+        
+        <!-- NEW: Save Button -->
+        <div class="flex justify-end mb-6">
+            <button id="save-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">
+                 저장하기 (브라우저에 임시 저장)
+            </button>
+        </div>
+        <!-- End New -->
+
+        <main>
+            <!-- Key Metrics Section -->
+            <section id="key-metrics" class="mb-8">
+                <h2 class="text-2xl font-semibold mb-4 text-slate-800">요약 현황</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-medium text-slate-500">동호회 통장 잔액 (입력)</h3>
+                        <!-- INPUT FIELD FOR CLUB BALANCE: Changed type to 'text' for currency formatting -->
+                        <input id="club-balance-input" type="text" value="1520350" class="number-input text-3xl font-bold text-slate-800 mt-2 p-0 bg-transparent text-right w-full">
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-medium text-slate-500">총 지출</h3>
+                        <p id="total-expense" class="text-3xl font-bold text-red-500 mt-2">₩0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-medium text-slate-500">회사 지원금 합계</h3>
+                        <p id="total-support" class="text-3xl font-bold text-blue-500 mt-2">₩0</p>
+                    </div>
+                    <div class="bg-green-50 p-6 rounded-xl shadow-sm border border-green-200">
+                        <h3 class="text-sm font-medium text-green-700">남은 최종 잔액</h3>
+                        <p id="remaining-balance" class="text-3xl font-bold text-green-600 mt-2">₩0</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Visualizations Section -->
+            <section id="visualizations" class="mb-8">
+                <h2 class="text-2xl font-semibold mb-4 text-slate-800">비용 분석</h2>
+                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="text-lg font-semibold text-center mb-4">항목별 지출 구성</h3>
+                        <div class="chart-container">
+                            <canvas id="expense-breakdown-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="text-lg font-semibold text-center mb-4">지원금 / 동호회 부담 비율</h3>
+                        <div class="chart-container">
+                            <canvas id="funding-ratio-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Interactive Data Table Section -->
+            <section id="data-table">
+                <h2 class="text-2xl font-semibold mb-4 text-slate-800">상세 지출 내역</h2>
+                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-600 uppercase">
+                            <tr>
+                                <th class="p-4">항목</th>
+                                <th class="p-4 text-right">인원수</th>
+                                <th class="p-4 text-right">실제 지출</th>
+                                <th class="p-4 text-center">회사 지원</th>
+                                <th class="p-4 text-right">회사 지원금</th>
+                                <th class="p-4 text-right">동호회 부담</th>
+                                <th class="p-4 hidden md:table-cell">비고</th>
+                            </tr>
+                        </thead>
+                        <tbody id="budget-table-body" class="divide-y divide-slate-200">
+                            <!-- Rows will be generated by JavaScript -->
+                        </tbody>
+                        <tfoot class="bg-slate-100 font-bold">
+                            <tr>
+                                <td class="p-4">총계</td>
+                                <td class="p-4"></td>
+                                <td id="total-expense-footer" class="p-4 text-right">₩0</td>
+                                <td class="p-4"></td>
+                                <td id="total-support-footer" class="p-4 text-right">₩0</td>
+                                <td id="total-burden-footer" class="p-4 text-right">₩0</td>
+                                <td class="p-4 hidden md:table-cell"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const fixedFoodSupportRate = 25000; 
+            const fixedVenueSupportRate = 15000; 
+
+            // Default Data
+            let budgetData = [
+                { id: 1, item: '식비', costPerPerson: 20000, people: 11, actualExpense: 200000, isCompanySupported: true, notes: '점심 식사' },
+                { id: 2, item: '장소 대여료', costPerPerson: 15000, people: 1, actualExpense: 15000, isCompanySupported: true, notes: '체육관' },
+                { id: 3, item: '참가비', costPerPerson: 10000, people: 10, actualExpense: 100000, isCompanySupported: false, notes: '대회 참가료' },
+                { id: 4, item: '상품', costPerPerson: 50000, people: 3, actualExpense: 150000, isCompanySupported: false, notes: '시상용' },
+                { id: 5, item: '기타', costPerPerson: 10000, people: 2, actualExpense: 20000, isCompanySupported: false, notes: '예비비·소모품' },
+            ];
+            const STORAGE_KEY = 'pingpongBudget';
+
+            const clubBalanceInput = document.getElementById('club-balance-input');
+            const saveButton = document.getElementById('save-button');
+
+
+            // --- LOCAL STORAGE FUNCTIONS ---
+            const saveDataToStorage = () => {
+                const dataToSave = {
+                    budgetData: budgetData,
+                    // Parse numeric value before saving to keep storage clean
+                    clubBalance: parseNumericValue(clubBalanceInput.value)
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+                // Provide visual feedback
+                saveButton.textContent = '✅ 저장 완료!';
+                setTimeout(() => {
+                    saveButton.textContent = '저장하기 (브라우저에 임시 저장)';
+                }, 2000);
+            };
+
+            const loadDataFromStorage = () => {
+                const savedData = localStorage.getItem(STORAGE_KEY);
+                if (savedData) {
+                    const parsedData = JSON.parse(savedData);
+                    budgetData = parsedData.budgetData;
+                    // Set raw numeric value for the input field
+                    clubBalanceInput.value = parsedData.clubBalance; 
+                }
+            };
+            // --- END LOCAL STORAGE FUNCTIONS ---
+
+            // Helper function to format amount without '₩' but with comma separator
+            const formatNumber = (amount) => {
+                return new Intl.NumberFormat('ko-KR').format(amount);
+            };
+
+            const formatCurrency = (amount) => {
+                return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(amount);
+            };
+
+            // Helper to extract numeric value from text input (allows raw text input like '123,456' but uses only '123456' for calculation)
+            const parseNumericValue = (rawValue) => {
+                const numericString = String(rawValue).replace(/[^\d]/g, ''); // Remove all non-digits
+                return parseInt(numericString) || 0;
+            };
+
+            // Renamed from handleFieldChange for clarity
+            const updateDataAndRecalculate = (id, field, value) => {
+                const dataItem = budgetData.find(d => d.id === id);
+                if (dataItem) {
+                    dataItem[field] = Math.max(0, value); 
+                }
+                calculateValues();
+            };
+            
+            const calculateValues = () => {
+                budgetData.forEach(d => {
+                    let supportCap = 0;
+                    let companySupportAmount = 0;
+                    
+                    if (d.item === '식비') {
+                        // Support cap for Food: 25k * people
+                        supportCap = fixedFoodSupportRate * d.people;
+                    } else if (d.item === '장소 대여료') {
+                        // Support cap for Venue: 15k * people
+                        supportCap = fixedVenueSupportRate * d.people; 
+                    } 
+                    
+                    if (d.isCompanySupported) {
+                        if (d.item === '식비' || d.item === '장소 대여료') {
+                            // Fixed Cap applied for both Food and Venue
+                            companySupportAmount = supportCap;
+                        } else {
+                            // Other items (including 참가비, 상품, 기타): Full actual expense covered by company
+                            companySupportAmount = d.actualExpense;
+                        }
+                    }
+                    
+                    d.companySupportAmount = companySupportAmount;
+
+                    // Calculate Club Burden based on specific rules
+                    if (d.item === '장소 대여료' && d.isCompanySupported) {
+                        // RULE: Club Burden is explicitly 0 for Venue Rental when supported.
+                        d.clubBurden = 0; 
+                    } else {
+                        // All other cases (Food, Other items, or Venue when NOT supported)
+                        d.clubBurden = Math.max(0, d.actualExpense - d.companySupportAmount);
+                    }
+                });
+            };
+
+            const renderTable = () => {
+                const tableBody = document.getElementById('budget-table-body');
+                tableBody.innerHTML = '';
+                budgetData.forEach(d => {
+                    // Conditional background styling based on company support
+                    const rowBgClass = d.isCompanySupported ? 'bg-[#EAF2FD]' : 'bg-[#F2F2F2]'; 
+                    
+                    const row = document.createElement('tr');
+                    row.className = `hover:bg-slate-50 ${rowBgClass}`;
+                    row.innerHTML = `
+                        <td class="p-4 font-medium">${d.item}</td>
+                        <td class="p-4 text-right">
+                            <!-- INPUT FIELD FOR PEOPLE COUNT -->
+                            <input type="number" value="${d.people}" data-id="${d.id}" data-field="people" class="number-input text-right w-16">
+                        </td>
+                        <td class="p-4 text-right">
+                            <!-- type="text" and using formatNumber for display -->
+                            <input type="text" value="${formatNumber(d.actualExpense)}" data-id="${d.id}" data-field="actualExpense" class="number-input text-right w-40">
+                        </td>
+                        <td class="p-4 text-center">
+                            <input type="checkbox" ${d.isCompanySupported ? 'checked' : ''} data-id="${d.id}" data-field="isCompanySupported" class="styled-checkbox">
+                        </td>
+                        <td class="p-4 text-right text-blue-600">${formatCurrency(d.companySupportAmount)}</td>
+                        <td class="p-4 text-right text-orange-600">${formatCurrency(d.clubBurden)}</td>
+                        <td class="p-4 text-slate-500 hidden md:table-cell">${d.notes}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+                // Attach Event Listeners
+                document.querySelectorAll('#budget-table-body input[data-field="people"]').forEach(input => {
+                    input.addEventListener('input', handlePeopleChange);
+                });
+                document.querySelectorAll('#budget-table-body input[data-field="actualExpense"]').forEach(input => {
+                    // 1. Update data/summary on input (typing) but DO NOT re-render table
+                    input.addEventListener('input', handleExpenseInput); 
+                    // 2. Re-render table (apply formatting) on blur (finished typing)
+                    input.addEventListener('blur', handleExpenseBlur); 
+                });
+                document.querySelectorAll('#budget-table-body input[type="checkbox"]').forEach(checkbox => {
+                    checkbox.addEventListener('change', handleCheckboxChange);
+                });
+            };
+
+            // 1. Handles People count changes
+            const handlePeopleChange = (e) => {
+                const id = parseInt(e.target.dataset.id);
+                const value = parseNumericValue(e.target.value);
+                const dataItem = budgetData.find(d => d.id === id);
+
+                if (dataItem) {
+                    dataItem.people = Math.max(0, value);
+
+                    // LOGIC: If item is '장소 대여료' (ID 2) or '참가비' (ID 3), update actualExpense default based on new people count
+                    if (id === 2 || id === 3) {
+                        // Use original costPerPerson (15000 for Venue, 10000 for Fee) as the base rate for the estimated actual expense
+                        dataItem.actualExpense = dataItem.people * dataItem.costPerPerson;
+                    }
+                }
+                
+                updateDataAndRecalculate(id, 'people', dataItem.people); 
+                fullUpdate(); 
+            };
+
+            // 2. Handles Actual Expense input (updates data and summary, but DOES NOT re-render table)
+            const handleExpenseInput = (e) => {
+                const id = parseInt(e.target.dataset.id);
+                
+                // Parse the value from the input text (allows user to type raw numbers)
+                const value = parseNumericValue(e.target.value);
+                
+                updateDataAndRecalculate(id, 'actualExpense', value);
+                
+                // Only update UI (totals and charts) but keep the raw text in the input field to prevent cursor jump
+                updateUI(); 
+            };
+
+            // 3. Handles Actual Expense blur (when user finishes typing)
+            const handleExpenseBlur = () => {
+                // Call fullUpdate to re-render the table, which applies the comma formatting to the input field
+                fullUpdate();
+            };
+            
+            const getClubBalance = () => {
+                const input = document.getElementById('club-balance-input');
+                // Now parsing formatted string from text input
+                return parseNumericValue(input.value); 
+            };
+            
+            // Handlers for Club Balance Input (Aligned with Actual Expense input handling)
+            
+            const handleClubBalanceInput = () => {
+                // Only update UI (totals/charts) immediately on typing
+                updateUI();
+            };
+
+            const handleClubBalanceBlur = () => {
+                // Apply final currency formatting on blur
+                const value = parseNumericValue(clubBalanceInput.value);
+                clubBalanceInput.value = formatCurrency(value);
+                fullUpdate();
+            };
+
+            const updateUI = () => {
+                const initialClubBalance = getClubBalance(); 
+
+                const totalExpense = budgetData.reduce((sum, d) => sum + d.actualExpense, 0);
+                const totalSupport = budgetData.reduce((sum, d) => sum + d.companySupportAmount, 0);
+                const totalBurden = budgetData.reduce((sum, d) => sum + d.clubBurden, 0);
+                const remainingBalance = initialClubBalance + totalSupport - totalExpense;
+
+                document.getElementById('total-expense').textContent = formatCurrency(totalExpense);
+                document.getElementById('total-support').textContent = formatCurrency(totalSupport);
+                document.getElementById('remaining-balance').textContent = formatCurrency(remainingBalance);
+                
+                document.getElementById('total-expense-footer').textContent = formatCurrency(totalExpense);
+                document.getElementById('total-support-footer').textContent = formatCurrency(totalSupport);
+                document.getElementById('total-burden-footer').textContent = formatCurrency(totalBurden);
+                
+                updateCharts(totalSupport, totalBurden);
+            };
+
+            const handleCheckboxChange = (e) => {
+                const id = parseInt(e.target.dataset.id);
+                const isChecked = e.target.checked;
+                const dataItem = budgetData.find(d => d.id === id);
+                if (dataItem) {
+                    dataItem.isCompanySupported = isChecked;
+                }
+                fullUpdate();
+            };
+            
+            const fullUpdate = () => {
+                calculateValues();
+                renderTable(); 
+                updateUI();
+            };
+            
+            let expenseChart, fundingChart;
+
+            const createCharts = () => {
+                const expenseCtx = document.getElementById('expense-breakdown-chart').getContext('2d');
+                expenseChart = new Chart(expenseCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: budgetData.map(d => d.item),
+                        datasets: [
+                            {
+                                label: '실제 지출',
+                                data: budgetData.map(d => d.actualExpense),
+                                backgroundColor: 'rgba(239, 68, 68, 0.6)',
+                                borderColor: 'rgba(239, 68, 68, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '회사 지원금',
+                                data: budgetData.map(d => d.companySupportAmount),
+                                backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                                borderColor: 'rgba(59, 130, 246, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: '동호회 부담',
+                                data: budgetData.map(d => d.clubBurden),
+                                backgroundColor: 'rgba(249, 115, 22, 0.6)',
+                                borderColor: 'rgba(249, 115, 22, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return '₩' + (value / 1000) + 'k';
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${formatCurrency(context.raw)}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                const fundingCtx = document.getElementById('funding-ratio-chart').getContext('2d');
+                fundingChart = new Chart(fundingCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['회사 지원금', '동호회 부담'],
+                        datasets: [{
+                            data: [0, 0],
+                            backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(249, 115, 22, 0.7)'],
+                            borderColor: ['#ffffff'],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.raw || 0;
+                                        const total = context.chart.getDatasetMeta(0).total;
+                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                                        return `${label}: ${formatCurrency(value)} (${percentage})`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const updateCharts = (totalSupport, totalBurden) => {
+                expenseChart.data.datasets[0].data = budgetData.map(d => d.actualExpense);
+                expenseChart.data.datasets[1].data = budgetData.map(d => d.companySupportAmount);
+                expenseChart.data.datasets[2].data = budgetData.map(d => d.clubBurden);
+                expenseChart.update();
+
+                fundingChart.data.datasets[0].data = [totalSupport, totalBurden];
+                fundingChart.update();
+            };
+            
+            // --- Initialization Sequence ---
+            loadDataFromStorage();
+            
+            // Format club balance input (either loaded value or default value)
+            clubBalanceInput.value = formatCurrency(parseNumericValue(clubBalanceInput.value));
+
+            // Attach listeners
+            clubBalanceInput.addEventListener('input', handleClubBalanceInput); 
+            clubBalanceInput.addEventListener('blur', handleClubBalanceBlur);
+            saveButton.addEventListener('click', saveDataToStorage);
+
+            createCharts();
+            fullUpdate();
+        });
+    </script>
+</body>
+</html>
